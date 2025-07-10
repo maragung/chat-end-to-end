@@ -100,7 +100,7 @@ export default function Page() {
   };
 
   useEffect(() => {
-    socket = io(`${window.location.protocol}//${window.location.hostname}:38883`);
+    socket = io(`http://82.208.22.200:38883`);
 
     socket.on("connect", () => {
       console.log("Connected to Socket.IO server!");
