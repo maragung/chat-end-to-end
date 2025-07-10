@@ -1,15 +1,16 @@
 // page.js
+// This is the React client component for the end-to-end encrypted chat application.
+// It uses Socket.IO for real-time communication.
+
 "use client";
 
 import { useEffect, useRef, useState } from "react";
 import io from "socket.io-client";
 
-// Encryption function: base64 encodes text with a key for simple E2E encryption
 function encrypt(text, key) {
   return btoa(text + "::" + key);
 }
 
-// Decryption function: decodes base64 and checks for key match
 function decrypt(cipher, key) {
   const decoded = atob(cipher);
   const parts = decoded.split("::");
@@ -19,7 +20,6 @@ function decrypt(cipher, key) {
   throw new Error("Key mismatch or corrupted data.");
 }
 
-// Generates a random alphanumeric string of a given length
 function randomString(length = 16) {
   const chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
   let result = "";
@@ -29,18 +29,16 @@ function randomString(length = 16) {
   return result;
 }
 
-// Simple MD5-like hash function for file integrity check
 function md5sum(str) {
   let hash = 0;
   for (let i = 0; i < str.length; i++) {
     const char = str.charCodeAt(i);
     hash = ((hash << 5) - hash) + char;
-    hash |= 0; // Convert to 32bit integer
+    hash |= 0;
   }
-  return Math.abs(hash).toString(16).substring(0, 8); // Return first 8 chars of hex
+  return Math.abs(hash).toString(16).substring(0, 8);
 }
 
-// Formats file size into a human-readable string (e.g., "1.23 MB")
 function readableFileSize(bytes) {
   if (bytes === 0) return "0 Bytes";
   const k = 1024;
@@ -49,7 +47,6 @@ function readableFileSize(bytes) {
   return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + " " + sizes[i];
 }
 
-// Exports chat messages to a plain text file
 function exportChat(messages) {
   let chatContent = "--- Chat History ---\n\n";
   messages.forEach((m) => {
@@ -73,7 +70,7 @@ function exportChat(messages) {
   URL.revokeObjectURL(url);
 }
 
-let socket; // Global socket instance
+let socket;
 
 export default function Page() {
   const [roomId, setRoomId] = useState("");
@@ -87,26 +84,23 @@ export default function Page() {
   const [enterToSend, setEnterToSend] = useState(true);
   const chatRef = useRef();
   const [theme, setTheme] = useState('light');
+  const [isFileUploading, setIsFileUploading] = useState(false);
 
   const [showAlert, setShowAlert] = useState(false);
   const [alertMessage, setAlertMessage] = useState("");
 
-  // Custom alert function to display messages to the user
   const showCustomAlert = (message) => {
     setAlertMessage(message);
     setShowAlert(true);
   };
 
-  // Closes the custom alert modal
   const closeCustomAlert = () => {
     setShowAlert(false);
     setAlertMessage("");
   };
 
-  // Effect hook for Socket.IO connection and event listeners
   useEffect(() => {
-    // Connect to the Socket.IO server using the current host's origin
-    socket = io(window.location.origin);
+    socket = io(`${window.location.protocol}//${window.location.hostname}:38883`);
 
     socket.on("connect", () => {
       console.log("Connected to Socket.IO server!");
@@ -116,11 +110,9 @@ export default function Page() {
       console.log("Disconnected from Socket.IO server.");
     });
 
-    // Listener for incoming messages (text or file)
     socket.on("receive-message", ({ from, text, file }) => {
       if (file) {
         try {
-          // Decrypt file data using the room key
           const decrypted = decrypt(file, roomKey);
           const obj = JSON.parse(decrypted);
           setMessages((prev) => [...prev, { from, file: obj, type: "file" }]);
@@ -130,7 +122,6 @@ export default function Page() {
         }
       } else {
         try {
-          // Decrypt text message using the room key
           const plain = decrypt(text, roomKey);
           setMessages((prev) => [...prev, { from, text: plain }]);
         } catch (error) {
@@ -140,20 +131,17 @@ export default function Page() {
       }
     });
 
-    // Listener for server notices (e.g., user joined/left)
     socket.on("receive-notice", (text) => {
       setMessages((prev) => [...prev, { from: "[NOTICE]", text }]);
     });
 
-    // Cleanup function: disconnect socket when component unmounts
     return () => {
       if (socket) {
         socket.disconnect();
       }
     };
-  }, [roomKey]); // roomKey as dependency to re-run effect if key changes
+  }, [roomKey]);
 
-  // Effect hook to scroll chat to bottom when new messages arrive
   useEffect(() => {
     if (chatRef.current) {
       chatRef.current.scrollTo({
@@ -163,7 +151,6 @@ export default function Page() {
     }
   }, [messages]);
 
-  // Effect hook to scroll chat to bottom when joining a room
   useEffect(() => {
     if (joined && chatRef.current) {
       chatRef.current.scrollTo({
@@ -173,7 +160,6 @@ export default function Page() {
     }
   }, [joined]);
 
-  // Effect hook to apply dark/light theme to the document
   useEffect(() => {
     if (theme === 'dark') {
       document.documentElement.classList.add('dark');
@@ -182,7 +168,6 @@ export default function Page() {
     }
   }, [theme]);
 
-  // Function to join a chat room
   function join() {
     if (!roomId || !roomKey || !nickname) {
       showCustomAlert("Room ID, Room Key, and Nickname cannot be empty.");
@@ -190,18 +175,16 @@ export default function Page() {
     }
     socket.emit("join-room", { roomId, nickname });
     setJoined(true);
-    setShowId(false); // Hide room ID by default after joining
+    setShowId(false);
   }
 
-  // Function to send a text message
   function send() {
-    if (!message.trim()) return; // Don't send empty messages
-    const encrypted = encrypt(message.trim(), roomKey); // Encrypt message
+    if (!message.trim()) return;
+    const encrypted = encrypt(message.trim(), roomKey);
     socket.emit("send-message", { roomId, from: nickname, text: encrypted });
-    setMessage(""); // Clear message input
+    setMessage("");
   }
 
-  // Function to leave the current chat room
   function leaveRoom() {
     socket.emit("leave-room", { roomId, nickname });
     setJoined(false);
@@ -211,7 +194,6 @@ export default function Page() {
     setNickname("");
   }
 
-  // Generates a random nickname base word
   function getRandomBaseWord() {
     const baseWords = [
       "flower", "skylight", "blackrock", "shadow", "whisper", "echo", "spirit", "dream",
@@ -287,34 +269,18 @@ export default function Page() {
       "truth", "honor", "courage", "bravery", "valor", "strength", "power", "might",
       "force", "energy", "vigor", "vitality", "life", "death", "rebirth", "renewal",
       "resurrection", "eternity", "infinity", "unity", "oneness", "wholeness", "completeness", "perfection",
-      "purity", "innocence", "grace", "blessing", "miracle", "wonder", "awe", "beauty",
-      "splendor", "glory", "majesty", "grandeur", "magnificence", "brilliance", "radiance", "luster",
-      "sheen", "sparkle", "glitter", "shimmer", "gleam", "glow", "light", "darkness",
-      "shadow", "shade", "gloom", "mist", "fog", "haze", "veil", "curtain",
-      "cloak", "shroud", "mantle", "robe", "garment", "attire", "costume", "disguise",
-      "mask", "face", "visage", "countenance", "expression", "smile", "frown", "grin",
-      "scowl", "gaze", "stare", "glance", "look", "sight", "vision", "eye",
-      "iris", "pupil", "retina", "lens", "optic", "nerve", "brain", "mind",
-      "thought", "idea", "concept", "theory", "hypothesis", "principle", "law", "rule",
-      "guideline", "code", "creed", "doctrine", "dogma", "belief", "faith", "hope",
-      "charity", "love", "joy", "peace", "patience", "kindness", "goodness", "faithfulness",
-      "gentleness", "selfcontrol", "virtue", "morality", "ethics", "justice", "truth", "honor",
-      "courage", "bravery", "valor", "strength", "power", "might", "force", "energy",
-      "vigor", "vitality", "life", "death", "rebirth", "renewal", "resurrection", "eternity",
-      "infinity", "unity", "oneness", "wholeness", "completeness", "perfection", "purity"
+      "purity"
     ];
     const randomIndex = Math.floor(Math.random() * baseWords.length);
     return baseWords[randomIndex];
   }
 
-  // Generates a new room ID, key, and a random nickname
   function generateRoom() {
     setRoomId(randomString(32));
     setRoomKey(randomString(16));
     setNickname(getRandomBaseWord() + "_" + Math.floor(Math.random() * 9999));
   }
 
-  // Copies text to the clipboard and shows a custom alert
   function copyToClipboard(text) {
     const textarea = document.createElement('textarea');
     textarea.value = text;
@@ -330,22 +296,22 @@ export default function Page() {
     document.body.removeChild(textarea);
   }
 
-  // Handles file uploads, encrypts them, and sends them over socket
   async function handleFileUpload(e) {
     const file = e.target.files[0];
     if (!file) return;
 
-    // File size limit (e.g., 5MB)
     if (file.size > 5 * 1024 * 1024) {
       showCustomAlert("File size too large (max 5MB).");
       return;
     }
 
+    setIsFileUploading(true);
+
     const reader = new FileReader();
     reader.onload = () => {
-      const base64 = reader.result.split(",")[1]; // Get base64 data
-      const hash = md5sum(base64); // Calculate simple hash
-      const size = readableFileSize(file.size); // Format file size
+      const base64 = reader.result.split(",")[1];
+      const hash = md5sum(base64);
+      const size = readableFileSize(file.size);
       const fileData = {
         name: file.name,
         type: file.type,
@@ -353,20 +319,26 @@ export default function Page() {
         size,
         hash,
       };
-      const encrypted = encrypt(JSON.stringify(fileData), roomKey); // Encrypt file data
+      const encrypted = encrypt(JSON.stringify(fileData), roomKey);
 
       socket.emit("send-message", {
         roomId,
         from: nickname,
         file: encrypted,
       });
+      setIsFileUploading(false);
     };
-    reader.readAsDataURL(file); // Read file as Data URL (base64)
+    reader.onerror = (error) => {
+      console.error("Failed to read file:", error);
+      showCustomAlert("Failed to read file.");
+      setIsFileUploading(false);
+    };
+    reader.readAsDataURL(file);
   }
 
   return (
     <div className={`min-h-screen bg-gradient-to-br ${theme === 'dark' ? 'from-gray-900 to-gray-800' : 'from-blue-50 to-indigo-100'} text-${theme === 'dark' ? 'white' : 'gray-900'} font-inter p-4 sm:p-6 md:p-8`}>
-      <div className={`max-w-2xl mx-auto ${theme === 'dark' ? 'bg-gray-850' : 'bg-white'} rounded-2xl shadow-xl overflow-hidden flex flex-col h-[calc(100vh-32px)]`}> {/* Adjusted h-calc here */}
+      <div className={`max-w-2xl mx-auto ${theme === 'dark' ? 'bg-gray-850' : 'bg-white'} rounded-2xl shadow-xl overflow-hidden flex flex-col h-[calc(100vh-32px)]`}>
         <header className={`bg-blue-600 ${theme === 'dark' ? 'bg-gray-900' : 'bg-blue-600'} text-white p-4 text-center rounded-t-2xl shadow-md flex justify-between items-center`}>
           <div className="flex-1 text-center">
             <h1 className="text-2xl font-extrabold tracking-tight">Chat</h1>
@@ -389,7 +361,7 @@ export default function Page() {
           </button>
         </header>
 
-        <main className="p-6 flex flex-col flex-1 overflow-hidden"> {/* main becomes flex-col and takes remaining height */}
+        <main className="p-6 flex flex-col flex-1 overflow-hidden">
           {!joined ? (
             <div className="space-y-5">
               <div>
@@ -537,6 +509,21 @@ export default function Page() {
                             <div>
                               <div className="font-semibold">{m.file.name}</div>
                               <div className="text-xs opacity-80">{m.file.size} | MD5: {m.file.hash}...</div>
+                              {m.file.data && (
+                                <button
+                                  onClick={() => {
+                                    const link = document.createElement('a');
+                                    link.href = `data:${m.file.type};base64,${m.file.data}`;
+                                    link.download = m.file.name;
+                                    document.body.appendChild(link);
+                                    link.click();
+                                    document.body.removeChild(link);
+                                  }}
+                                  className="text-blue-400 hover:text-blue-200 text-xs mt-1"
+                                >
+                                  Download File
+                                </button>
+                              )}
                             </div>
                           </div>
                         )}
@@ -549,17 +536,23 @@ export default function Page() {
               <div className={`flex items-end gap-3 ${theme === 'dark' ? 'bg-gray-800' : 'bg-gray-100'} p-3 rounded-xl shadow-inner`}>
                 <label htmlFor="file-upload" className="cursor-pointer p-2 rounded-full bg-blue-100 dark:bg-blue-900 text-blue-600 dark:text-blue-300 hover:bg-blue-200 dark:hover:bg-blue-800 transition duration-200">
                   <input id="file-upload" type="file" onChange={handleFileUpload} className="hidden" />
-                  <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.586-6.586a4 4 0 10-5.656-5.656l-6.586 6.586a6 6 0 108.486 8.486L20.5 13" />
-                  </svg>
+                  {isFileUploading ? (
+                    <svg className="animate-spin h-6 w-6 text-blue-600 dark:text-blue-300" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                    </svg>
+                  ) : (
+                    <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.586-6.586a4 4 0 10-5.656-5.656l-6.586 6.586a6 6 0 108.486 8.486L20.5 13" />
+                    </svg>
+                  )}
                 </label>
                 <textarea
                   className={`flex-1 p-3 rounded-xl border ${theme === 'dark' ? 'border-gray-700' : 'border-gray-300'} ${theme === 'dark' ? 'bg-gray-700' : 'bg-white'} text-${theme === 'dark' ? 'white' : 'gray-900'} resize-none focus:ring-blue-500 focus:border-blue-500 transition duration-200 custom-scrollbar`}
-                  rows={1} // Default 1 row, will expand
+                  rows={1}
                   value={message}
                   onChange={(e) => {
                     setMessage(e.target.value);
-                    // Automatically adjust textarea height
                     e.target.style.height = 'auto';
                     e.target.style.height = e.target.scrollHeight + 'px';
                   }}
@@ -603,7 +596,6 @@ export default function Page() {
         </main>
       </div>
 
-      {/* Custom Alert Modal */}
       {showAlert && (
         <div className="fixed inset-0 bg-gray-900 bg-opacity-50 flex items-center justify-center z-50">
           <div className={`p-6 rounded-lg shadow-xl max-w-sm w-full text-center ${theme === 'dark' ? 'bg-gray-700' : 'bg-white'}`}>
@@ -618,9 +610,7 @@ export default function Page() {
         </div>
       )}
 
-      {/* Inter Font from Google Fonts */}
       <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet" />
-      {/* Tailwind CSS CDN */}
       <script src="https://cdn.tailwindcss.com"></script>
       <style jsx>{`
         .font-inter {
@@ -649,10 +639,9 @@ export default function Page() {
         .dark .custom-scrollbar::-webkit-scrollbar-thumb:hover {
           background: #777;
         }
-        /* Adjust textarea height to auto-expand */
         textarea {
-          min-height: 48px; /* Minimum height for 1 row */
-          max-height: 150px; /* Maximum height before scrolling */
+          min-height: 48px;
+          max-height: 150px;
         }
       `}</style>
     </div>
