@@ -4,10 +4,12 @@
 import { useEffect, useRef, useState } from "react";
 import io from "socket.io-client";
 
+// Encryption function: base64 encodes text with a key for simple E2E encryption
 function encrypt(text, key) {
   return btoa(text + "::" + key);
 }
 
+// Decryption function: decodes base64 and checks for key match
 function decrypt(cipher, key) {
   const decoded = atob(cipher);
   const parts = decoded.split("::");
@@ -17,6 +19,7 @@ function decrypt(cipher, key) {
   throw new Error("Key mismatch or corrupted data.");
 }
 
+// Generates a random alphanumeric string of a given length
 function randomString(length = 16) {
   const chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
   let result = "";
@@ -26,17 +29,18 @@ function randomString(length = 16) {
   return result;
 }
 
-
+// Simple MD5-like hash function for file integrity check
 function md5sum(str) {
   let hash = 0;
   for (let i = 0; i < str.length; i++) {
     const char = str.charCodeAt(i);
     hash = ((hash << 5) - hash) + char;
-    hash |= 0;
+    hash |= 0; // Convert to 32bit integer
   }
-  return Math.abs(hash).toString(16).substring(0, 8);
+  return Math.abs(hash).toString(16).substring(0, 8); // Return first 8 chars of hex
 }
 
+// Formats file size into a human-readable string (e.g., "1.23 MB")
 function readableFileSize(bytes) {
   if (bytes === 0) return "0 Bytes";
   const k = 1024;
@@ -45,6 +49,7 @@ function readableFileSize(bytes) {
   return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + " " + sizes[i];
 }
 
+// Exports chat messages to a plain text file
 function exportChat(messages) {
   let chatContent = "--- Chat History ---\n\n";
   messages.forEach((m) => {
@@ -68,8 +73,7 @@ function exportChat(messages) {
   URL.revokeObjectURL(url);
 }
 
-
-let socket;
+let socket; // Global socket instance
 
 export default function Page() {
   const [roomId, setRoomId] = useState("");
@@ -87,19 +91,22 @@ export default function Page() {
   const [showAlert, setShowAlert] = useState(false);
   const [alertMessage, setAlertMessage] = useState("");
 
+  // Custom alert function to display messages to the user
   const showCustomAlert = (message) => {
     setAlertMessage(message);
     setShowAlert(true);
   };
 
+  // Closes the custom alert modal
   const closeCustomAlert = () => {
     setShowAlert(false);
     setAlertMessage("");
   };
 
-
+  // Effect hook for Socket.IO connection and event listeners
   useEffect(() => {
-    socket = io("http://82.208.22.200:38883");
+    // Connect to the Socket.IO server using the current host's origin
+    socket = io(window.location.origin);
 
     socket.on("connect", () => {
       console.log("Connected to Socket.IO server!");
@@ -109,9 +116,11 @@ export default function Page() {
       console.log("Disconnected from Socket.IO server.");
     });
 
+    // Listener for incoming messages (text or file)
     socket.on("receive-message", ({ from, text, file }) => {
       if (file) {
         try {
+          // Decrypt file data using the room key
           const decrypted = decrypt(file, roomKey);
           const obj = JSON.parse(decrypted);
           setMessages((prev) => [...prev, { from, file: obj, type: "file" }]);
@@ -121,6 +130,7 @@ export default function Page() {
         }
       } else {
         try {
+          // Decrypt text message using the room key
           const plain = decrypt(text, roomKey);
           setMessages((prev) => [...prev, { from, text: plain }]);
         } catch (error) {
@@ -130,17 +140,20 @@ export default function Page() {
       }
     });
 
+    // Listener for server notices (e.g., user joined/left)
     socket.on("receive-notice", (text) => {
       setMessages((prev) => [...prev, { from: "[NOTICE]", text }]);
     });
 
+    // Cleanup function: disconnect socket when component unmounts
     return () => {
       if (socket) {
         socket.disconnect();
       }
     };
-  }, [roomKey]); // roomKey sebagai dependency untuk memastikan useEffect berjalan jika roomKey berubah
+  }, [roomKey]); // roomKey as dependency to re-run effect if key changes
 
+  // Effect hook to scroll chat to bottom when new messages arrive
   useEffect(() => {
     if (chatRef.current) {
       chatRef.current.scrollTo({
@@ -150,6 +163,7 @@ export default function Page() {
     }
   }, [messages]);
 
+  // Effect hook to scroll chat to bottom when joining a room
   useEffect(() => {
     if (joined && chatRef.current) {
       chatRef.current.scrollTo({
@@ -159,7 +173,7 @@ export default function Page() {
     }
   }, [joined]);
 
-
+  // Effect hook to apply dark/light theme to the document
   useEffect(() => {
     if (theme === 'dark') {
       document.documentElement.classList.add('dark');
@@ -168,6 +182,7 @@ export default function Page() {
     }
   }, [theme]);
 
+  // Function to join a chat room
   function join() {
     if (!roomId || !roomKey || !nickname) {
       showCustomAlert("Room ID, Room Key, and Nickname cannot be empty.");
@@ -175,17 +190,18 @@ export default function Page() {
     }
     socket.emit("join-room", { roomId, nickname });
     setJoined(true);
-    setShowId(false);
+    setShowId(false); // Hide room ID by default after joining
   }
 
+  // Function to send a text message
   function send() {
-    if (!message.trim()) return;
-    const encrypted = encrypt(message.trim(), roomKey);
+    if (!message.trim()) return; // Don't send empty messages
+    const encrypted = encrypt(message.trim(), roomKey); // Encrypt message
     socket.emit("send-message", { roomId, from: nickname, text: encrypted });
-    setMessage("");
+    setMessage(""); // Clear message input
   }
 
-
+  // Function to leave the current chat room
   function leaveRoom() {
     socket.emit("leave-room", { roomId, nickname });
     setJoined(false);
@@ -195,6 +211,7 @@ export default function Page() {
     setNickname("");
   }
 
+  // Generates a random nickname base word
   function getRandomBaseWord() {
     const baseWords = [
       "flower", "skylight", "blackrock", "shadow", "whisper", "echo", "spirit", "dream",
@@ -290,12 +307,14 @@ export default function Page() {
     return baseWords[randomIndex];
   }
 
+  // Generates a new room ID, key, and a random nickname
   function generateRoom() {
     setRoomId(randomString(32));
     setRoomKey(randomString(16));
     setNickname(getRandomBaseWord() + "_" + Math.floor(Math.random() * 9999));
   }
 
+  // Copies text to the clipboard and shows a custom alert
   function copyToClipboard(text) {
     const textarea = document.createElement('textarea');
     textarea.value = text;
@@ -311,6 +330,7 @@ export default function Page() {
     document.body.removeChild(textarea);
   }
 
+  // Handles file uploads, encrypts them, and sends them over socket
   async function handleFileUpload(e) {
     const file = e.target.files[0];
     if (!file) return;
@@ -323,9 +343,9 @@ export default function Page() {
 
     const reader = new FileReader();
     reader.onload = () => {
-      const base64 = reader.result.split(",")[1];
-      const hash = md5sum(base64);
-      const size = readableFileSize(file.size);
+      const base64 = reader.result.split(",")[1]; // Get base64 data
+      const hash = md5sum(base64); // Calculate simple hash
+      const size = readableFileSize(file.size); // Format file size
       const fileData = {
         name: file.name,
         type: file.type,
@@ -333,18 +353,16 @@ export default function Page() {
         size,
         hash,
       };
-      const encrypted = encrypt(JSON.stringify(fileData), roomKey);
+      const encrypted = encrypt(JSON.stringify(fileData), roomKey); // Encrypt file data
 
       socket.emit("send-message", {
         roomId,
         from: nickname,
         file: encrypted,
       });
-
     };
-    reader.readAsDataURL(file);
+    reader.readAsDataURL(file); // Read file as Data URL (base64)
   }
-
 
   return (
     <div className={`min-h-screen bg-gradient-to-br ${theme === 'dark' ? 'from-gray-900 to-gray-800' : 'from-blue-50 to-indigo-100'} text-${theme === 'dark' ? 'white' : 'gray-900'} font-inter p-4 sm:p-6 md:p-8`}>
