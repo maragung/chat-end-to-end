@@ -100,7 +100,9 @@ export default function Page() {
   };
 
   useEffect(() => {
-    socket = io(`http://82.208.22.200:38883`);
+    // Use an environment variable for the Socket.IO server URL.
+    // Fallback to localhost for local development.
+    socket = io(process.env.NEXT_PUBLIC_SOCKET_SERVER_URL || 'http://localhost:38883');
 
     socket.on("connect", () => {
       console.log("Connected to Socket.IO server!");
