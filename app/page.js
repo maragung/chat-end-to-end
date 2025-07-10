@@ -1,3 +1,4 @@
+// page.js
 "use client";
 
 import { useEffect, useRef, useState } from "react";
@@ -98,8 +99,15 @@ export default function Page() {
 
 
   useEffect(() => {
-    fetch("/api/socket");
-    socket = io({ path: "/api/socket" });
+    socket = io("http://82.208.22.200:38883");
+
+    socket.on("connect", () => {
+      console.log("Connected to Socket.IO server!");
+    });
+
+    socket.on("disconnect", () => {
+      console.log("Disconnected from Socket.IO server.");
+    });
 
     socket.on("receive-message", ({ from, text, file }) => {
       if (file) {
@@ -131,7 +139,7 @@ export default function Page() {
         socket.disconnect();
       }
     };
-  }, [roomKey]);
+  }, [roomKey]); // roomKey sebagai dependency untuk memastikan useEffect berjalan jika roomKey berubah
 
   useEffect(() => {
     if (chatRef.current) {
@@ -510,7 +518,7 @@ export default function Page() {
                             </svg>
                             <div>
                               <div className="font-semibold">{m.file.name}</div>
-                              <div className="text-xs opacity-80">{m.file.size} | MD5: {m.file.hash.substring(0, 8)}...</div>
+                              <div className="text-xs opacity-80">{m.file.size} | MD5: {m.file.hash}...</div>
                             </div>
                           </div>
                         )}
